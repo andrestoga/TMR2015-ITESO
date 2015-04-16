@@ -1,0 +1,199 @@
+/////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////// M A S T E R /////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////
+
+#define BT_CONN 1
+#define INBOX 1
+#define OUTBOX 5
+#define MOTOR(p,s) RemoteSetOutputState(BT_CONN, p, s, OUT_MODE_MOTORON+OUT_MODE_BRAKE+OUT_MODE_REGULATED, OUT_REGMODE_SPEED, 0, OUT_RUNSTATE_RUNNING, 0)
+
+// MACROS
+#define LSC \
+SENSOR_3           // LSC = Light Sensor Central
+#define CS \
+S4                 // CS = Compass Sensor
+#define STOP \
+Off(OUT_ABC);Wait(500); // STOP = Apaga los 3 motores + DELAY
+#define FWD(v) \
+OnRev(OUT_AB,v);   // FWD() = Avanza recto
+#define REV(v) \
+OnFwd(OUT_AB,v);   // REV() = Retrocede recto
+#define FWD_A(v) \
+OnRev(OUT_A,v);    // FWD_A() = Avanza motor A
+#define FWD_B(v) \
+OnRev(OUT_B,v);    // FWD_B() = Avanza motor B
+#define REV_A(v) \
+OnFwd(OUT_A,v);    // REV_A() = Retrocede motor A
+#define REV_B(v) \
+OnFwd(OUT_B,v);    // REV_B() = Retrocede motor B
+#define DELAY \
+Wait(500);         // DELAY = Descansa por 500 ms
+
+// CONSTANTES
+#define PM 40      // PM = Punto Medio (entre el umbral blanco y negro)
+#define V  70
+#define ANGULO1 283
+#define ANGULO2 286
+
+sub conexion(int conn);
+sub subeHumanoidePendiente();
+sub slaveSwitch();
+
+string out = "", in = "";             // Strings de instrucción entre MASTER-SLAVE
+int anguloInicial, anguloReal;
+int angulo = 0, anguloSig = 0;
+int canasta = 0;
+int TSR = 0, TSL = 0;
+bool pendiente = false;
+
+byte   fileHandle;                    // Identificador
+int    fileSize = 80000;              // Tamaño
+int    bytesWritten;                  // Bytes escritos
+string text;                          // String a escribir
+
+task register(){                                       // Esta función crea un archivo con las lecturas del Compás.
+    DeleteFile("MAL_1.txt");
+    DeleteFile("BIEN_1.txt");
+    CreateFile("MAL_1.txt", fileSize, fileHandle);
+    /*while(angulo < ANGULO1 || angulo > ANGULO2 && !ButtonPressed(BTNLEFT,true)){
+                                                       // Mientras no sea al ángulo deseado ni se presione el botón..
+        text = NumToStr(angulo);                       // Convierte el ángulo a String
+        text2 = NumToStr(anguloSig);
+        WriteLnString(fileHandle,text, bytesWritten);  // Escribe en archivo
+        WriteLnString(fileHandle,text2, bytesWritten);
+        WriteLnString(fileHandle,"", bytesWritten);
+        Wait(10);                                       // Delay necesario entre escritura y escritura. De lo contrario el archivo sería demasiado grande para caber en la memoria del cerebro.
+    }
+    PlaySound(1);*/
+    WriteLnString(fileHandle,"F I N", bytesWritten);   // Escribre F I N
+    CloseFile(fileHandle);                             // Finaliza el archivo
+    RenameFile("MAL_1.txt","BIEN_1.txt");              // Lo renombra
+}
+
+task compass(){
+   anguloInicial = SensorHTCompass(CS);
+   while(1){                                           // Siempre...
+       if(TSR == 1 && TSL == 1){                       // Si topa con la pared...
+           anguloInicial = SensorHTCompass(CS);        // Reestablece el ángulo para esa pared
+           Wait(100);
+           TSR = 0;
+           TSL = 0;
+       }
+       anguloReal = SensorHTCompass(CS);               // Obtiene el ángulo real actual
+       anguloSig = anguloReal - anguloInicial;         // Obtiene el ángulo relativo. El que importa.
+       if((abs(angulo - abs(anguloSig)) < 5) || (abs(angulo - abs(anguloSig)) > 100)){
+           angulo = anguloSig;                         // Discrimina los cambios demasiado drásticos.
+       }else{
+           WriteLnString(fileHandle,"SOLUCIONADO", bytesWritten);
+       }
+       if(angulo < 0){
+           angulo = angulo + 360;
+       }
+       Wait(10);
+   }
+}
+
+task move(){
+    while(1){
+         ReceiveRemoteString(INBOX, true, in);	  // Recibe mensaje del Esclavo
+         TextOut(10,LCD_LINE3,in);		            // Imprimime el mensaje del SLAVE
+         slaveSwitch();                           // Evalúa el estado del SLAVE
+         
+         if(TSR == 1 && TSL == 1){                                // Si choca contra la pared...
+             TSR = 0;
+             TSL = 0;
+             WriteLnString(fileHandle,"PARED", bytesWritten);     // Escribe "PARED" en archivo
+             STOP
+             subeHumanoidePendiente();
+             RotateMotor(OUT_A,90,200);                           // Gira un poco (necesario)
+             STOP
+             while(angulo < ANGULO1 || angulo > ANGULO2){         // Mientras no esté a 90°
+                 FWD_B(90);                                       // Gira
+                 REV_A(90);
+             }
+             STOP
+         }
+         subeHumanoidePendiente();
+         if(canasta == 8){                    // Si la canasta llegó al límite...
+             PlaySound(1);
+             PlaySound(1);
+             Stop(1);
+         }
+    }
+}
+
+task main(){
+     PlaySound(5);
+     SetSensorLowspeed(CS);               // Define el puerto del Compass
+     SetSensorLight(IN_3);                // Define el puerto del LSR
+     conexion(BT_CONN);                   // Inicia conexión Bluetooth
+     Precedes(register,compass,move);     // Inicia el registro de archivo, el sensado de angulo y el movimiento. Al mismo tiempo.
+}
+
+sub conexion(int conn){
+   if (!BluetoothStatus(conn)==NO_ERR){
+        TextOut(5,LCD_LINE2,"   Error");
+        TextOut(5,LCD_LINE4,"de Bluetooth");
+        Wait(2000);
+        Stop(true);
+   }
+}
+
+sub slaveSwitch(){
+      switch(in){
+          case "NadaPresion":   FWD_A(65);                                   // Se acerca poco a poco
+                                FWD_B(55);
+                                TSR = 1;
+                                TSL = 1;
+                                break;
+          case "NadaSinPresion":   FWD_A(65);                                   // Se acerca poco a poco
+                                   FWD_B(55);
+                                   TSR = 0;
+                                   TSL = 0;
+                                   break;
+          case "Negro":   STOP
+                          FWD_A(75);           // Avanza con pasos cortos
+			                    FWD_B(70);
+                          Wait(250);
+                          break;
+           case "Blanco": STOP
+                          canasta++;
+                          PlaySound(5);
+                          RotateMotor(OUT_C,100,-600);   // Baja el gancho
+                          DELAY
+                          if(TSR == 0 && TSL == 0)
+                              RotateMotor(OUT_AB,V,-20);
+                          if(TSR == 0 && TSL == 0)
+                              RotateMotor(OUT_AB,V,-20);
+                          if(TSR == 0 && TSL == 0)
+                              RotateMotor(OUT_AB,V,-20);
+                          if(TSR == 0 && TSL == 0)
+                              RotateMotor(OUT_AB,V,-20);
+                          if(TSR == 0 && TSL == 0)
+                              RotateMotor(OUT_AB,V,-20);
+                          if(TSR == 0 && TSL == 0)
+                              RotateMotor(OUT_AB,V,-20);
+                          if(TSR == 0 && TSL == 0)
+                              RotateMotor(OUT_AB,V,-20);
+                          if(TSR == 0 && TSL == 0)
+                              RotateMotor(OUT_AB,V,-20);
+                          if(TSR == 0 && TSL == 0)
+                              RotateMotor(OUT_AB,V,-20);
+                          if(TSR == 0 && TSL == 0)
+                              RotateMotor(OUT_AB,V,-20);
+                          pendiente = true;
+                          break;
+                 default: break;
+                 }
+}
+
+sub subeHumanoidePendiente(){
+     if(pendiente){
+         RotateMotor(OUT_C,80,1200);    // Lo sube
+         DELAY
+         RotateMotor(OUT_C,100,-350);   // Baja gancho
+         pendiente = false;
+     }
+}
+
+
