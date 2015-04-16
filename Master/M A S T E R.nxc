@@ -75,12 +75,6 @@ task register(){                                       // Esta función crea un a
 task compass(){
    anguloInicial = SensorHTCompass(CS);
    while(1){                                           // Siempre...
-       if(TSR == 1 && TSL == 1){                       // Si topa con la pared...
-           anguloInicial = SensorHTCompass(CS);        // Reestablece el ángulo para esa pared
-           Wait(100);
-           TSR = 0;
-           TSL = 0;
-       }
        anguloReal = SensorHTCompass(CS);               // Obtiene el ángulo real actual
        anguloSig = anguloReal - anguloInicial;         // Obtiene el ángulo relativo. El que importa.
        if((abs(angulo - abs(anguloSig)) < 5) || (abs(angulo - abs(anguloSig)) > 100)){
@@ -98,10 +92,11 @@ task compass(){
 task move(){
     while(1){
          ReceiveRemoteString(INBOX, true, in);	  // Recibe mensaje del Esclavo
-         TextOut(10,LCD_LINE3,in);		            // Imprimime el mensaje del SLAVE
          slaveSwitch();                           // Evalúa el estado del SLAVE
          
-         if(TSR == 1 && TSL == 1){                                // Si choca contra la pared...
+         if(TSR == 1 && TSL == 1){
+             anguloInicial = SensorHTCompass(CS);        // Reestablece el ángulo para esa pared
+             Wait(100);
              TSR = 0;
              TSL = 0;
              WriteLnString(fileHandle,"PARED", bytesWritten);     // Escribe "PARED" en archivo
@@ -132,27 +127,18 @@ task main(){
      Precedes(register,compass,move);     // Inicia el registro de archivo, el sensado de angulo y el movimiento. Al mismo tiempo.
 }
 
-sub conexion(int conn){
-   if (!BluetoothStatus(conn)==NO_ERR){
-        TextOut(5,LCD_LINE2,"   Error");
-        TextOut(5,LCD_LINE4,"de Bluetooth");
-        Wait(2000);
-        Stop(true);
-   }
-}
-
 sub slaveSwitch(){
       switch(in){
-          case "NadaPresion":   FWD_A(65);                                   // Se acerca poco a poco
-                                FWD_B(55);
-                                TSR = 1;
-                                TSL = 1;
-                                break;
-          case "NadaSinPresion":   FWD_A(65);                                   // Se acerca poco a poco
-                                   FWD_B(55);
-                                   TSR = 0;
-                                   TSL = 0;
-                                   break;
+          case "Presion":    FWD_A(65);                                   // Se acerca poco a poco
+                             FWD_B(55);
+                             TSR = 1;
+                             TSL = 1;
+                             break;
+          case "NoPresion":  FWD_A(65);                                   // Se acerca poco a poco
+                             FWD_B(55);
+                             TSR = 0;
+                             TSL = 0;
+                             break;
           case "Negro":   STOP
                           FWD_A(75);           // Avanza con pasos cortos
 			                    FWD_B(70);
@@ -196,6 +182,15 @@ sub subeHumanoidePendiente(){
          RotateMotor(OUT_C,100,-350);   // Baja gancho
          pendiente = false;
      }
+}
+
+sub conexion(int conn){
+   if (!BluetoothStatus(conn)==NO_ERR){
+        TextOut(5,LCD_LINE2,"   Error");
+        TextOut(5,LCD_LINE4,"de Bluetooth");
+        Wait(2000);
+        Stop(true);
+   }
 }
 
 

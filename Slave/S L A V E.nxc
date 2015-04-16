@@ -64,9 +64,9 @@ sub s1(){
              Wait(4000);				                        // Espera a que el maestro haga la rutina de salvar
          }
          if(TSR == 1 && TSL == 1){
-             SendResponseString(OUTBOX,"NadaPresion");
+             SendResponseString(OUTBOX,"Presion");
          }else if(TSR == 0 || TSL == 0){
-             SendResponseString(OUTBOX,"NadaSinPresion");
+             SendResponseString(OUTBOX,"NoPresion");
          }
          promedio = (LSL + LSR)/2;                      // Promedia los valores de ambos LS
      }
