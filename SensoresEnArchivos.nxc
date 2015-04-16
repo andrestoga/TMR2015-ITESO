@@ -1,0 +1,85 @@
+
+#define LSC \
+SENSOR_3           // LSC = Light Sensor Central
+#define CS \
+S4                 // CS = Compass Sensor
+
+
+// CONSTANTES
+#define PM 40      // PM = Punto Medio (entre el umbral blanco y negro)
+#define V  70      // V  = Velocidad con la que avanzará normalmente
+#define ANGULO1 89
+#define ANGULO2 91
+
+
+
+string out = "", in = "";             // Strings de instrucción entre MASTER-SLAVE
+int anguloInicial;
+int anguloReal;
+int angulo = 0;
+
+
+
+task regisSenLow(){                                       // Esta función crea un archivo con las lecturas del Compás.
+    byte fileHandle;                                   // Identificador
+    int fileSize = 80000;                              // Tamaño
+    int bytesWritten;                                  // Bytes escritos
+    string text;                                       // String a escribir
+
+    DeleteFile("NXT1.txt");
+    DeleteFile("NXTUltrasonico.txt");
+    CreateFile("NXT1.txt", fileSize, fileHandle);
+    while(SensorUS(IN_3) < 5){                         // Mientras no sea al ángulo deseado...
+        text = NumToStr(SensorUS(IN_3));               // Convierte el ángulo a String
+        WriteLnString(fileHandle,text, bytesWritten);  // Escribe en archivo
+        Wait(5);                                       // Delay necesario entre escritura y escritura. De lo contrario el archivo sería demasiado grande para caber en la memoria del cerebro.
+    }
+    WriteLnString(fileHandle,"F I N", bytesWritten);   // Escribre F I N
+    CloseFile(fileHandle);                             // Finaliza el archivo
+    RenameFile("NXT1.txt","NXTUltrasonico.txt");             // Lo renombra
+}
+
+
+task regisBrujula(){                                       // Esta función crea un archivo con las lecturas del Compás.
+    byte fileHandle;                                   // Identificador
+    int fileSize = 80000;                              // Tamaño
+    int bytesWritten;                                  // Bytes escritos
+    string text;                                       // String a escribir
+
+    DeleteFile("NXT.txt");
+    DeleteFile("NXTBrujula.txt");
+    CreateFile("NXT.txt", fileSize, fileHandle);
+    while(angulo < ANGULO1 || angulo > ANGULO2){                 // Mientras no sea al ángulo deseado...
+        text = NumToStr(angulo);                       // Convierte el ángulo a String
+        WriteLnString(fileHandle,text, bytesWritten);  // Escribe en archivo
+        Wait(5);                                       // Delay necesario entre escritura y escritura. De lo contrario el archivo sería demasiado grande para caber en la memoria del cerebro.
+    }
+    WriteLnString(fileHandle,"F I N", bytesWritten);   // Escribre F I N
+    CloseFile(fileHandle);                             // Finaliza el archivo
+    RenameFile("NXT.txt","NXTBrujula.txt");             // Lo renombra
+}
+
+
+task compass(){                                        // Función que entrega el ángulo del robot
+   anguloInicial = SensorHTCompass(CS);                // Determina con qué ángulo inició
+   Wait(100);
+   while(1){                                           // Siempre...
+       anguloReal = SensorHTCompass(CS);               // Obtiene el ángulo real actual
+       //Wait(10);
+       angulo = anguloReal - anguloInicial;            // Obtiene el ángulo relativo. El que importa.
+       if(angulo < 0){                                 // Si es menor que 0...
+           angulo = angulo + 360;                       // Lo hace positivo
+       }
+   }
+}
+
+
+
+task main(){
+     PlaySound(5);
+     SetSensorLowspeed(CS);               // Define el puerto del Compass
+     SetSensorLowspeed(IN_3);             // Define el puerto del Ultrasonico
+     SetSensorTouch(IN_1);                // Define el puerto del TSL
+     SetSensorTouch(IN_2);                // Define el puerto del TSR
+     Precedes(compass,regisBrujula,regisSenLow);     // Inicia el registro de archivo, el sensado de angulo y el movimiento. Al mismo tiempo.
+}
