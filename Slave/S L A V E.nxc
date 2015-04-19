@@ -18,28 +18,16 @@ SENSOR_4           // TSL = Touch Sensor Left
 #define DELAY \
 Wait(500);        // DELAY = Descansa por 500 ms
 
-// CONSTANTES
-#define V  60      // V  = Velocidad con la que avanzará normalmente
-
 // VARIABLES
-bool vioAlgo = false;
-string out = "";
-string in = "nada";
+string out = "", in = "";
 int promedio = 50;
-long nada=0;
 
 // M. IZQUIERDO - A
 // M. DERECHO   - B
 // M. ELEVADOR  - C
-// LSC = Light Sensor Central
-// STOP = Apaga los 3 motores
-// FWD = Avanza recto
-// REV = Retrocede recto
-// FWD_A = Avanza motor A
-// FWD_B = Avanza motor B
 
 sub conexion(int conn);
-sub s1();
+sub work();
 
 task main(){
      PlaySound(SOUND_FAST_UP);
@@ -47,28 +35,29 @@ task main(){
      SetSensorLight(IN_2);                // Define el puerto del LSL
      SetSensorTouch(IN_3);                // Define el puerto del TSR
      SetSensorTouch(IN_4);                // Define el puerto del TSL
-     conexion(0);			  // Inicia conexión Bluetooth
-     s1();                                // Inicia el Estado 1
+     conexion(0);			                    // Inicia conexión Bluetooth
+     work();                              // Inicia su único trabajo
 }
 
-sub s1(){
+sub work(){
     while(1){
          promedio = (LSL + LSR)/2;
-         if(promedio < 40){                             // Si el H es negro...
-             SendResponseString(OUTBOX,"Negro");	      // Notifica al maestro
-             Wait(500);
-         }else if(promedio > 65){                       // Pero si es blanco...
-             SendResponseString(OUTBOX,"Blanco");	      // Notifica al maestro
-             Wait(10);
-             SendResponseString(OUTBOX,"Nada");		      // Después le dice que no hay nada
-             Wait(4000);				                        // Espera a que el maestro haga la rutina de salvar
+         if(promedio < 40){
+             SendResponseString(OUTBOX,"Negro");
+             DELAY
+         }else if(promedio > 65){
+             SendResponseString(OUTBOX,"Blanco");
+             DELAY
          }
          if(TSR == 1 && TSL == 1){
              SendResponseString(OUTBOX,"Presion");
          }else if(TSR == 0 || TSL == 0){
              SendResponseString(OUTBOX,"NoPresion");
          }
-         promedio = (LSL + LSR)/2;                      // Promedia los valores de ambos LS
+         ReceiveRemoteString(INBOX,true,in);
+         if(in == "Tiralos"){
+             // Rutina para tirar H
+         }
      }
 }
 
