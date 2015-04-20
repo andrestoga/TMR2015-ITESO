@@ -38,8 +38,8 @@ Wait(500);         // DELAY = Descansa por 500 ms
 // CONSTANTES
 #define PM 40      // PM    = Punto Medio (entre el umbral blanco y negro)
 #define V  70      // V     = Velocidad de los pasos cortos
-#define HUECO 25   // HUECO = Umbral donde ve una puerta ( hueco )
-#define LIM 3      // LIM   = Límite de la canasta
+#define HUECO 40   // HUECO = Umbral donde ve una puerta ( hueco )
+#define LIM 8      // LIM   = Límite de la canasta
 
 // SUB_RUTINAS
 sub conexion(int conn);                  // Inicia interfáz Bluetooth
@@ -61,28 +61,70 @@ int    TSR = 0, TSL = 0;
 bool   pendiente = false;
 bool   full = false;
 bool   comienzaReg = false;
-bool   error = false;
 byte   fileHandle;
 int    fileSize = 80000;
 int    bytesWritten;
 string text;
-long t0, tiempo;
-bool runningTime = false;
-int duracion;
+long   t0, tiempo;
+long   t0_c, tiempo_c;
+bool   error = false;
+int    seg = 0;
+bool   runningTime = false;
+int    duracion;
+int    robotAzul = true;
+int    effort_A = 0;
+int    effort_B = 0;
+
 
 task move(){
     //inicializacion();
-    while(true){
-         ReceiveRemoteString(INBOX,true,in);
-         slaveSwitch();
-         if(TSR == 1 && TSL == 1){
-             rutinaDeGiro(65,68);
+    comienzaReg = true;
+    while(1){
+         if(!error){
+             ReceiveRemoteString(INBOX,true,in);
+             slaveSwitch();
+             if(TSR == 1 && TSL == 1){
+                 rutinaDeGiro(65,68);
+             }
+             if(canasta == LIM){
+                 PlaySound(1);
+                 full = true;
+                 regresaBase();
+             }
+         }else{
+             STOP
+             seg = 0;
+             error = false;
+             REV_B(80);
+             Wait(500);
          }
-         if(canasta == LIM){
-             PlaySound(1);
-             full = true;
-             regresaBase();
-         }
+    }
+}
+
+task errorManager(){
+    while(1){
+        effort_A = MotorTachoCount(OUT_A);
+        effort_B = MotorTachoCount(OUT_B);
+        if(effort_A != 0 || effort_B != 0){
+            seg = 0;
+        }
+        if(seg >= 3){
+           error = true;
+           PlaySound(1);
+        }
+    }
+}
+
+task cronometro(){
+    t0_c = CurrentTick();
+    tiempo_c = CurrentTick()-t0_c;
+    while(1){
+        while(tiempo_c < (1000)){
+              tiempo_c = CurrentTick()-t0_c;
+        }
+        t0_c = CurrentTick();
+        tiempo_c = CurrentTick()-t0_c;
+        seg++;
     }
 }
 
@@ -92,9 +134,10 @@ task register(){
     CreateFile("MAL_1.txt", fileSize, fileHandle);
     until(comienzaReg);
     while(!ButtonPressed(BTNLEFT,true)){
-         text = NumToStr(angulo);
+         text = NumToStr(effort_A)+", "+NumToStr(effort_B);
          WriteLnString(fileHandle,text,bytesWritten);
-         Wait(15);
+         //Wait(15);
+         Wait(50);
     }
     PlaySound(1);
     WriteLnString(fileHandle,"F I N", bytesWritten);
@@ -107,6 +150,14 @@ task compass(){
    while(true){
        anguloReal = SensorHTCompass(CS);
        anguloSig = abs(anguloReal - anguloInicial);
+       /*
+       if(abs(angulo - anguloSig) >= 2){
+           seg = 0;
+       }
+       if(seg >= 5){
+           error = true;
+           PlaySound(1);
+       }*/
        if((angulo - anguloSig) < 5 || (angulo - anguloSig) > 70){
            angulo = anguloSig;
        }
@@ -133,8 +184,7 @@ task main(){
      SetSensorLight(IN_2);
      SetSensorLight(IN_3);
      conexion(BT_CONN);
-     //Precedes(register,compass,move);
-     Precedes(compass,move);
+     Precedes(compass,move,timer,errorManager,cronometro);
 }
 
 sub slaveSwitch(){
@@ -145,18 +195,19 @@ sub slaveSwitch(){
                              break;
           case "NoPresion":  if(LSC > HUECO || nPared == 0){
                                  FWD_A(70);
-                                 FWD_B(50);
+                                 FWD_B(55);
+                                 checkTapeError();
                              }
                              if(LSC < HUECO && nPared > 0){
-                                 FWD_A(50);
-                                 FWD_B(70);
+                                 FWD_A(40);
+                                 FWD_B(57);
                                  checkTapeError();
                              }
                              TSR = 0;
                              TSL = 0;
                              break;
           case "Negro":      STOP
-                             FWD_A(80);
+                             FWD_A(70);
 			                       FWD_B(70);
                              Wait(250);
                              checkTapeError();
@@ -172,7 +223,8 @@ sub slaveSwitch(){
                                      FWD(50);
                                      checkTapeError();
                                  }
-                                 if(TSL == 1 && TSR == 1){
+                                 STOP
+                                 if(TSL == 1 || TSR == 1){
                                      pendiente = true;
                                  }else{
                                      RotateMotor(OUT_C,80,1200);    // Sube H
@@ -203,7 +255,7 @@ sub regresaBase(){
                       if(nPared == 4 && LSC < HUECO){
                           STOP
                           while(FSR < PM){
-                              FWD_A(70);
+                              FWD_A(60);
                               FWD_B(50);
                           }
                           STOP
@@ -221,10 +273,30 @@ sub regresaBase(){
      }
 }
 
+sub rutinaDeGiro(int aMenor, int aMayor){
+     STOP
+     anguloInicial = SensorHTCompass(CS);
+     Wait(200);
+     TSR = 0;
+     TSL = 0;
+     nPared++;
+     //WriteLnString(fileHandle,"PARED", bytesWritten);
+     RotateMotor(OUT_A,100,250);
+     //STOP
+     while(angulo < aMenor || angulo > aMayor){
+         FWD_B(90);
+         REV_A(90);
+     }
+     STOP
+     FWD(60);
+     Wait(500);
+     if(!full) {subeHumanoidePendiente();}
+}
+
 sub inicializacion(){
     while(FSL < PM || FSR < PM){
         if(FSL < PM){
-            FWD_A(50+8);
+            FWD_A(50);
             Off(OUT_B);
             Wait(50);
         }
@@ -238,43 +310,30 @@ sub inicializacion(){
     anguloInicial = SensorHTCompass(CS);
     Wait(100);
     FWD(60);
-    Wait(1500);
+    Wait(1800);
     STOP
-    while(angulo < 87 || angulo > 90){
-        FWD_A(60);
-        REV_B(60);
+    if(robotAzul){
+        while(angulo < 92 || angulo > 95){
+            FWD_A(65);
+            REV_B(65);
+        }
+    }else{
+        while(angulo < 255 || angulo > 258){
+            FWD_A(65);
+            REV_B(65);
+        }
     }
     STOP
     nPared = 0;
-}
-
-sub rutinaDeGiro(int aMenor, int aMayor){
-     STOP
-     anguloInicial = SensorHTCompass(CS);
-     Wait(200);
-     TSR = 0;
-     TSL = 0;
-     nPared++;
-     //WriteLnString(fileHandle,"PARED", bytesWritten);
-     RotateMotor(OUT_A,90,200);
-     STOP
-     while(angulo < aMenor || angulo > aMayor){
-         FWD_B(80);
-         REV_A(80);
-     }
-     STOP
-     if(!full) {subeHumanoidePendiente();}
 }
 
 sub checkTapeError(){
     if(FSR < PM){
         STOP
         PlaySound(1);
-        Wait(1000);
         REV(50);  Wait(500);
-        while(FSR < PM){
-            FWD_B(50);
-        }
+        FWD_B(50);
+        Wait(350);
     }
 }
 

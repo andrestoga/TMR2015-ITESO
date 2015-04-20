@@ -15,8 +15,11 @@ SENSOR_2           // LSL = Light Sensor Left
 SENSOR_3           // TSR = Touch Sensor Right
 #define TSL \
 SENSOR_4           // TSL = Touch Sensor Left
+#define STOP \
+Off(OUT_ABC);\
+Wait(500);
 #define DELAY \
-Wait(500);        // DELAY = Descansa por 500 ms
+Wait(500);         // DELAY = Descansa por 500 ms
 
 // VARIABLES
 string out = "", in = "";
@@ -56,7 +59,10 @@ sub work(){
          }
          ReceiveRemoteString(INBOX,true,in);
          if(in == "Tiralos"){
-             // Rutina para tirar H
+             RotateMotor(OUT_AB,100,100);
+             STOP
+             RotateMotor(OUT_AB,100,-100);
+             STOP
          }
      }
 }
