@@ -48,15 +48,16 @@ sub slaveSwitch();                       // Evalúa el mensaje del SLAVE
 sub regresaBase();                       // Regresa a la base cuando está full
 sub rutinaDeGiro(int aMenor, int aMayor);// Gira hasta estar entro del rango recibido
 sub inicializacion();                    // Fase donde sales de la zona de rescate
-sub checkTapeError();                    // Verifica si se metió a la cinta de la puerta
+sub finalizacion();                      // Retoma el camino después de tirar los H
 sub runTime(int t);                      // Literalmente: Un temporizador
+sub repairError();                       // Repara el error detectado.
 
 // VARIABLES
 string out = "", in = "";
 int    anguloInicial, anguloReal;
 int    angulo = 0, anguloSig = 0;
 int    canasta = 0;
-int    nPared = 4;
+int    nPared = 0;
 int    TSR = 0, TSL = 0;
 bool   pendiente = false;
 bool   full = false;
@@ -82,7 +83,7 @@ bool   stopManager = false;
 
 task move(){
     stopManager = true;
-    //inicializacion();
+    inicializacion();
     stopManager = false;
     while(1){
          if(!(error_m || error_h || error_t)){
@@ -91,46 +92,13 @@ task move(){
              if(TSR == 1 && TSL == 1){
                  rutinaDeGiro(60,64);
              }
-             if(canasta == LIM){
+             if(canasta == LIM){    // Inducirlo: canasta = LIM, nPared = 3.
                  PlaySound(1);
                  full = true;
                  regresaBase();
              }
          }else{
-             STOP
-             if(error_m){
-                 seg_m = 0;
-                 seg_h = 0;
-                 error_h = false;
-                 REV(80);
-                 Wait(500);
-                 STOP
-                 FWD_B(90);
-                 Wait(500);
-             }else if(error_t){
-                 seg_h = 0;
-                 seg_m = 0;
-                 STOP
-                 REV(80);  Wait(400);
-                 FWD_B(80);
-                 Wait(200);
-             }
-             else if(error_h){
-                 STOP
-                 REV_B(70);
-                 REV_A(50);
-                 Wait(2000);
-                 STOP
-                 seg_h = 0;
-                 FWD_A(80);
-                 Wait(500);
-                 STOP
-                 FWD(80);
-                 Wait(500);
-             }
-             error_m = false;
-             error_h = false;
-             error_t = false;
+             repairError();
          }
     }
 }
@@ -139,22 +107,11 @@ task errorManager(){
     while(1){
         effort_A = MotorTachoCount(OUT_A);
         effort_B = MotorTachoCount(OUT_B);
-        if(effort_A != 0 || effort_B != 0){
-            seg_m = 0;
-        }
-        if(seg_m >= 5){
-           error_m = true;
-           PlaySound(5);
-        }
-        if(LSC > HUECO || stopManager){
-            seg_h = 0;
-        }
-        if(FSR < PM && !stopManager){
-            error_t = true;
-        }
-        if(seg_h >= 4){
-            error_h = true;
-        }
+        if(effort_A != 0 || effort_B != 0) {seg_m = 0;}
+        if(LSC > HUECO || stopManager)     {seg_h = 0;}
+        if(seg_m >= 5)                     {error_m = true;}
+        if(FSR < PM && !stopManager)       {error_t = true;}
+        if(seg_h >= 4)                     {error_h = true;}
     }
 }
 
@@ -232,21 +189,20 @@ sub slaveSwitch(){
           case "NoPresion":  if(LSC > HUECO || nPared == 0){
                                  FWD_A(75);
                                  FWD_B(60);
-                                 //checkTapeError();
                              }
                              if(LSC < HUECO && nPared > 0){
                                  FWD_A(50);
                                  FWD_B(69);
-                                 //checkTapeError();
                              }
                              TSR = 0;
                              TSL = 0;
                              break;
-          case "Negro":      STOP
-                             FWD_A(70);
-			                       FWD_B(70);
-                             Wait(250);
-                             //checkTapeError();
+          case "Negro":      if(!full){
+                                 STOP
+                                 FWD_A(70);
+			                           FWD_B(70);
+                                 Wait(250);
+                             }
                              break;
           case "Blanco":     if(!full){
                                  stopManager = true;
@@ -258,7 +214,6 @@ sub slaveSwitch(){
                                  runTime(1000);
                                  while(runningTime == true && TSL == 0 && TSR == 0){
                                      FWD(50);
-                                     //checkTapeError();
                                  }
                                  STOP
                                  if(TSL == 1 || TSR == 1){
@@ -285,69 +240,32 @@ sub regresaBase(){
           case 3:
           case 4:
           default:while(full){
-                      ReceiveRemoteString(INBOX,true,in);
-                      slaveSwitch();
-                      if(TSR == 1 && TSL == 1){
-                          rutinaDeGiro(65,68);
+                      while(nPared < 4){
+                          ReceiveRemoteString(INBOX,true,in);
+                          slaveSwitch();
+                          if(TSR == 1 && TSL == 1){
+                              rutinaDeGiro(60,64);
+                          }
                       }
-                      if(nPared == 4 && LSC < HUECO){
-                          stopManager = true;
-                          STOP
-                          /*while(FSR > PM){
-                              FWD_A(90);
-                              FWD_B(60);
-                          }
-                          STOP*/
-                          while(FSL > PM){
-                              FWD_A(80);
-                              Off(OUT_B);
-                          }
-                          STOP/*
-                          while(FSR > PM){
-                              REV_B(70);
-                              Off(OUT_A);
-                          }
-                          STOP*/
-                          SendRemoteString(BT_CONN,OUTBOX,"Tiralos");
-                          DELAY
-                          SendRemoteString(BT_CONN,OUTBOX,"");
-                      }
-                      full = false;
-                      Wait(2000);
-                      FWD(60);
+                      stopManager = true;
+                      FWD(80);
                       Wait(500);
-                      while(FSL < PM || FSR < PM){
-                          if(FSL < PM){
-                              REV_A(50);
-                              Off(OUT_B);
-                              Wait(50);
-                          }
-                          if(FSR < PM){
-                              REV_B(50);
-                              Off(OUT_A);
-                              Wait(50);
-                          }
+                      while(LSC > HUECO){
+                          FWD_A(75);
+                          FWD_B(60);
                       }
                       STOP
-                      anguloInicial = SensorHTCompass(CS);
-                      Wait(100);
-                      REV(60);
-                      Wait(1800);
-                      STOP
-                      if(robotAzul){
-                        while(angulo < 92 || angulo > 95){
-                          REV_A(65);
-                          FWD_B(65);
-                      }
-                      }else{
-                         while(angulo < 255 || angulo > 258){
-                           REV_A(65);
-                           FWD_B(65);
-                      }
+                      while(FSL > PM){
+                          FWD_A(80);
+                          Off(OUT_B);
                       }
                       STOP
-                      nPared = 0;
-                      stopManager = false;
+                      SendRemoteString(BT_CONN,OUTBOX,"Tiralos");
+                      DELAY
+                      SendRemoteString(BT_CONN,OUTBOX,"");
+                      Wait(2000);
+                      Stop(1);
+                      finalizacion();
                   }
                   break;
      }
@@ -359,10 +277,10 @@ sub rutinaDeGiro(int aMenor, int aMayor){
      Wait(200);
      TSR = 0;
      TSL = 0;
-     nPared++;
-     //WriteLnString(fileHandle,"PARED", bytesWritten);
+     if(nPared <= 3){
+         nPared++;
+     }
      RotateMotor(OUT_A,100,400);
-     //STOP
      while(angulo < aMenor || angulo > aMayor){
          FWD_B(80);
          REV_A(80);
@@ -407,16 +325,80 @@ sub inicializacion(){
     nPared = 0;
 }
 
-/*sub checkTapeError(){
-    if(FSR < PM){
+sub finalizacion(){
+    STOP
+    FWD(60);
+    Wait(500);
+    while(FSL < PM || FSR < PM){
+        if(FSL < PM){
+            REV_A(50);
+            Off(OUT_B);
+            Wait(50);
+        }
+        if(FSR < PM){
+            REV_B(50);
+            Off(OUT_A);
+            Wait(50);
+        }
+    }
+    STOP
+    anguloInicial = SensorHTCompass(CS);
+    Wait(100);
+    REV(60);
+    Wait(1800);
+    STOP
+    if(robotAzul){
+        while(angulo < 92 || angulo > 95){
+            REV_A(65);
+            FWD_B(65);
+        }
+    }else{
+        while(angulo < 255 || angulo > 258){
+            REV_A(65);
+            FWD_B(65);
+        }
+    }
+    STOP
+    full = false;
+    canasta = 0;
+    nPared = 0;
+    stopManager = false;
+}
+
+sub repairError(){
+    STOP
+    if(error_m){
+        seg_m = 0;
+        seg_h = 0;
+        REV(80);
+        Wait(500);
+        STOP
+        FWD_B(90);
+        Wait(500);
+    }else if(error_t){
         seg_h = 0;
         seg_m = 0;
         STOP
         REV(80);  Wait(400);
         FWD_B(80);
         Wait(200);
+    }else if(error_h){
+        STOP
+        REV_B(70);
+        REV_A(50);
+        Wait(2000);
+        STOP
+        seg_h = 0;
+        FWD_A(80);
+        Wait(500);
+        STOP
+        FWD(80);
+        Wait(500);
     }
-} */
+    error_m = false;
+    error_h = false;
+    error_t = false;
+}
 
 sub subeHumanoidePendiente(){
      if(pendiente){
