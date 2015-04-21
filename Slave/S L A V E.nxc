@@ -59,9 +59,9 @@ sub work(){
          }
          ReceiveRemoteString(INBOX,true,in);
          if(in == "Tiralos"){
-             RotateMotor(OUT_AB,100,100);
+             RotateMotor(OUT_AB,50,-100);
              STOP
-             RotateMotor(OUT_AB,100,-100);
+             RotateMotor(OUT_AB,50,100);
              STOP
          }
      }
