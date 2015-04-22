@@ -1,0 +1,530 @@
+/////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////// M A S T E R /////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Este código es para barrer por la orilla el COCLON (CC) del CÍRCULO
+// Se ingresa en la pantalla el número de (H)umanoides EN LA ORILLA de dicho CC.
+// También se indica si la zona de seguridad (ZS) está de frente o está alado.
+// Este código es para H BLANCOS por lo tanto la ZS es la AZUL.
+
+
+#define BT_CONN 1
+#define INBOX 1
+#define OUTBOX 5
+
+// MACROS
+#define FSL \
+SENSOR_1           // FSL = Floor Sensor Left
+#define FSR \
+SENSOR_2           // FSR = Floor Sensor Right
+#define LSC \
+SENSOR_3           // LSC = Light Sensor Central
+#define CS \
+S4                 // CS = Compass Sensor
+#define STOP \
+Off(OUT_ABC);\
+Wait(500);         // STOP = Apaga los 3 motores + DELAY
+#define FWD(v) \
+OnRev(OUT_A,v);\
+OnRev(OUT_B,v);    // FWD() = Avanza recto
+#define REV(v) \
+OnFwd(OUT_A,v);\
+OnFwd(OUT_B,v);    // REV() = Retrocede recto
+#define FWD_A(v) \
+OnRev(OUT_A,v);    // FWD_A() = Avanza motor A
+#define FWD_B(v) \
+OnRev(OUT_B,v);    // FWD_B() = Avanza motor B
+#define REV_A(v) \
+OnFwd(OUT_A,v);    // REV_A() = Retrocede motor A
+#define REV_B(v) \
+OnFwd(OUT_B,v);    // REV_B() = Retrocede motor B
+#define DELAY \
+Wait(500);         // DELAY = Descansa por 500 ms
+
+// CONSTANTES
+#define PM 40      // PM    = Punto Medio (entre el umbral blanco y negro)
+#define V  70      // V     = Velocidad de los pasos cortos
+#define HUECO 40   // HUECO = Umbral donde ve una puerta ( hueco )
+#define LIM 8      // LIM   = Límite de la canasta
+#define IZQ 1      // IZQ   = El CC está a la izquierda
+#define FTE 2      // FTE   = El CC está al frente
+#define DER 3      // DER   = El CC está a la derecha
+
+// SUB_RUTINAS
+sub conexion(int conn);                  // Inicia interfáz Bluetooth
+sub configuracion();                     // Configura la cantidad de H y la posición de la ZS
+sub subeHumanoidePendiente();            // Sube H pendiente
+sub slaveSwitch();                       // Evalúa el mensaje del SLAVE
+sub gostMode();                          //
+sub rutinaDeGiro(int aMenor, int aMayor);// Gira hasta estar entro del rango recibido
+sub inicializacion();                    // Fase donde sales de la zona de rescate
+sub finalizacion();                      // Retoma el camino después de tirar los H
+sub runTime(int t);                      // Literalmente: Un temporizador
+sub repairError();                       // Repara el error detectado.
+sub alineacion();                        // Después de girar. Busca la cinta negra.
+
+// VARIABLES DE CAMBIO
+bool   rAzul = true;                     // Los H a rescatar deberán ser BLANCOS
+
+// VARIABLES
+string out = "", in = "";
+int    anguloInicial, anguloReal;
+int    angulo = 0, anguloSig = 0;
+int    canasta = 0;
+int    nPared = 0;
+int    TSR = 0, TSL = 0;
+bool   pendiente = false;
+bool   comienzaReg = false;
+byte   fileHandle;
+int    fileSize = 80000;
+int    bytesWritten;
+string text;
+long   t0, tiempo;
+long   t0_c, tiempo_c;
+bool   error_m = false;
+bool   error_h = false;
+bool   error_t = false;
+int    seg_m = 0;
+int    seg_h = 0;
+int    seg_g = 0;
+bool   runningTime = false;
+int    duracion;
+int    effort_A = 0;
+int    effort_B = 0;
+bool   stopManager = false;
+bool   descargar = false;
+int    CCPosition = 0;
+bool   permitted;
+
+
+task move(){
+    stopManager = true;
+    configuracion();
+    inicializacion();
+    stopManager = false;
+    while(1){
+         if(CCPosition == FTE){
+             while(nPared < 2){
+                stopManager = false;
+                permitted = false;
+                if(error_m || error_h || error_t) {repairError();}
+                ReceiveRemoteString(INBOX,true,in);
+                slaveSwitch();
+                if(TSR == 1 && TSL == 1) {rutinaDeGiro(60,64);}
+             }
+             alineacion();
+             while(nPared < 4){
+                 stopManager = false;
+                 permitted = true;
+                 if(error_m || error_h || error_t) {repairError();}
+                 ReceiveRemoteString(INBOX,true,in);
+                 slaveSwitch();
+                 if(TSR == 1 && TSL == 1) {rutinaDeGiro(60,64);}
+             }
+             alineacion();
+             while(nPared < 2){
+                 stopManager = false;
+                 permitted = true;
+                 if(error_m || error_h || error_t) {repairError();}
+                 ReceiveRemoteString(INBOX,true,in);
+                 slaveSwitch();
+                 if(TSR == 1 && TSL == 1) {rutinaDeGiro(60,64);}
+             }
+             descargar = true;
+             alineacion();
+         }else if(CCPosition == DER){
+             while(nPared < 1){
+                stopManager = false;
+                permitted = false;
+                if(error_m || error_h || error_t) {repairError();}
+                ReceiveRemoteString(INBOX,true,in);
+                slaveSwitch();
+                if(TSR == 1 && TSL == 1) {rutinaDeGiro(60,64);}
+             }
+             alineacion();
+             while(nPared < 4){
+                 stopManager = false;
+                 permitted = true;
+                 if(error_m || error_h || error_t) {repairError();}
+                 ReceiveRemoteString(INBOX,true,in);
+                 slaveSwitch();
+                 if(TSR == 1 && TSL == 1) {rutinaDeGiro(60,64);}
+             }
+             alineacion();
+             while(nPared < 3){
+                 stopManager = false;
+                 permitted = true;
+                 if(error_m || error_h || error_t) {repairError();}
+                 ReceiveRemoteString(INBOX,true,in);
+                 slaveSwitch();
+                 if(TSR == 1 && TSL == 1) {rutinaDeGiro(60,64);}
+             }
+             descargar = true;
+             alineacion();
+         }else if(CCPosition == IZQ){
+             while(nPared < 3){
+                stopManager = false;
+                permitted = false;
+                if(error_m || error_h || error_t) {repairError();}
+                ReceiveRemoteString(INBOX,true,in);
+                slaveSwitch();
+                if(TSR == 1 && TSL == 1) {rutinaDeGiro(60,64);}
+             }
+             alineacion();
+             while(nPared < 4){
+                 stopManager = false;
+                 permitted = true;
+                 if(error_m || error_h || error_t) {repairError();}
+                 ReceiveRemoteString(INBOX,true,in);
+                 slaveSwitch();
+                 if(TSR == 1 && TSL == 1) {rutinaDeGiro(60,64);}
+             }
+             alineacion();
+             while(nPared < 1){
+                 stopManager = false;
+                 permitted = true;
+                 if(error_m || error_h || error_t) {repairError();}
+                 ReceiveRemoteString(INBOX,true,in);
+                 slaveSwitch();
+                 if(TSR == 1 && TSL == 1) {rutinaDeGiro(60,64);}
+             }
+             descargar = true;
+             alineacion();
+         }
+    }
+}
+
+task errorManager(){
+    while(1){
+        effort_A = MotorTachoCount(OUT_A);
+        effort_B = MotorTachoCount(OUT_B);
+        if(effort_A != 0 || effort_B != 0)           {seg_m = 0;}
+        if(LSC > HUECO || stopManager || seg_m >= 2) {seg_h = 0;}
+        if(seg_m >= 4)                               {error_m = true;}
+        if(FSR < PM && !stopManager)                 {error_t = true;}
+        if(seg_h >= 4)                               {error_h = true;}
+    }
+}
+
+task cronometro(){
+    t0_c = CurrentTick();
+    tiempo_c = CurrentTick()-t0_c;
+    while(1){
+        while(tiempo_c < (1000)){
+              tiempo_c = CurrentTick()-t0_c;
+        }
+        t0_c = CurrentTick();
+        tiempo_c = CurrentTick()-t0_c;
+        seg_m++;
+        seg_h++;
+        seg_g++;
+    }
+}
+
+task register(){
+    DeleteFile("MAL_1.txt");
+    DeleteFile("BIEN_1.txt");
+    CreateFile("MAL_1.txt", fileSize, fileHandle);
+    until(comienzaReg);
+    while(!ButtonPressed(BTNLEFT,true)){
+         text = NumToStr(effort_A)+", "+NumToStr(effort_B);
+         WriteLnString(fileHandle,text,bytesWritten);
+         //Wait(15);
+         Wait(50);
+    }
+    PlaySound(1);
+    WriteLnString(fileHandle,"F I N", bytesWritten);
+    CloseFile(fileHandle);
+    RenameFile("MAL_1.txt","BIEN_1.txt");
+}
+
+task compass(){
+   anguloInicial = SensorHTCompass(CS);
+   while(true){
+       anguloReal = SensorHTCompass(CS);
+       anguloSig = abs(anguloReal - anguloInicial);
+       if((angulo - anguloSig) < 5 || (angulo - anguloSig) > 70){
+           angulo = anguloSig;
+       }
+       Wait(10);
+   }
+}
+
+task timer(){
+     while(1){
+         until(runningTime);
+         t0 = CurrentTick();
+         tiempo = CurrentTick()-t0;
+         while(tiempo < duracion){
+             tiempo = CurrentTick()-t0;
+         }
+         runningTime = false;
+     }
+}
+
+task main(){
+     PlaySound(5);
+     SetSensorLowspeed(CS);
+     SetSensorLight(IN_1);
+     SetSensorLight(IN_2);
+     SetSensorLight(IN_3);
+     conexion(BT_CONN);
+     Precedes(compass,move,timer,errorManager,cronometro);
+}
+
+sub slaveSwitch(){
+      switch(in){
+          case "Presion":    STOP
+                             TSR = 1;
+                             TSL = 1;
+                             break;
+          case "NoPresion":  if(LSC > HUECO || nPared == 0){
+                                 FWD_A(75);
+                                 FWD_B(60);
+                             }
+                             if(LSC < HUECO && nPared > 0){
+                                 FWD_A(50);
+                                 FWD_B(69);
+                             }
+                             TSR = 0;
+                             TSL = 0;
+                             break;
+          case "Negro":      if(canasta < LIM){
+                                 STOP
+                                 FWD_A(70);
+			                           FWD_B(70);
+                                 Wait(500);
+                             }
+                             break;
+          case "Blanco":     if(canasta < LIM && permitted){
+                                 stopManager = true;
+                                 canasta++;
+                                 STOP
+                                 PlaySound(5);
+                                 RotateMotor(OUT_C,100,-600);       // Baja el gancho
+                                 DELAY
+                                 runTime(1000);
+                                 while(runningTime == true && TSL == 0 && TSR == 0){
+                                     FWD(50);
+                                 }
+                                 STOP
+                                 if(TSL == 1 || TSR == 1){
+                                     pendiente = true;
+                                 }else{
+                                     RotateMotor(OUT_C,80,1200);    // Sube H
+                                     DELAY
+                                     RotateMotor(OUT_C,100,-350);   // Baja gancho
+                                     pendiente = false;
+                                 }
+                                 STOP
+                                 stopManager = false;
+                             }
+                             break;
+          default:           break;
+      }
+}
+
+sub rutinaDeGiro(int aMenor, int aMayor){
+     STOP
+     anguloInicial = SensorHTCompass(CS);
+     Wait(200);
+     TSR = 0;
+     TSL = 0;
+     if(seg_g > 10 && nPared <= 3) {nPared++;}
+     RotateMotor(OUT_A,100,400);
+     while(angulo < aMenor || angulo > aMayor){
+         seg_g = 0;
+         FWD_B(80);
+         REV_A(80);
+     }
+     STOP
+     FWD(80);
+     Wait(500);
+     if(canasta < LIM) {subeHumanoidePendiente();}
+     seg_g = 0;
+}
+
+sub inicializacion(){
+    while(FSL < PM || FSR < PM){
+        if(FSL < PM){
+            REV_A(60);
+            Off(OUT_B);
+            //Wait(50);
+        }
+        if(FSR < PM){
+            REV_B(60);
+            Off(OUT_A);
+            //Wait(50);
+        }
+    }
+    STOP
+    anguloInicial = SensorHTCompass(CS);
+    Wait(100);
+    REV(60);
+    Wait(800);
+    comienzaReg = true;
+    STOP
+    //if(CCPosition == FTE){
+        while(angulo < 60 || angulo > 65){
+            REV_A(65);
+            FWD_B(65);
+        }/*
+    }else{
+        while(angulo < 255 || angulo > 258){
+            REV_A(65);
+            FWD_B(65);
+        }
+    }  */
+    STOP
+    nPared = 0;
+}
+
+sub alineacion(){
+    stopManager = true;
+    FWD(80);
+    Wait(700);
+    while(LSC > HUECO){
+        FWD_A(75);
+        FWD_B(60);
+    }
+    STOP
+    FWD(80);
+    Wait(600);
+    STOP
+    while(FSL > PM){
+        FWD_A(90);
+        Off(OUT_B);
+    }
+    STOP
+    if(descargar){
+        SendRemoteString(BT_CONN,OUTBOX,"Tiralos");
+        DELAY
+        SendRemoteString(BT_CONN,OUTBOX,"");
+        Wait(1000);
+        canasta = 0;
+        Stop(1);
+    }else{
+        REV(60);
+        Wait(500);
+        while(FSL > PM || FSR > PM){
+            if(FSL > PM){
+                FWD_A(50);
+                Off(OUT_B);
+                Wait(50);
+            }
+            if(FSR > PM){
+                FWD_B(50);
+                Off(OUT_A);
+                Wait(50);
+            }
+        }
+        STOP
+        FWD(60);
+        Wait(1800);
+        STOP
+        anguloInicial = SensorHTCompass(CS);
+        Wait(100);
+        while(angulo < 90 || angulo > 95){
+            FWD_A(65);
+            REV_B(65);
+        }
+        STOP
+        FWD(60);
+        Wait(500);
+    }
+
+    nPared = 0;
+    stopManager = false;
+}
+
+sub repairError(){
+    stopManager = true;
+    STOP
+    if(error_m){
+        seg_m = 0;
+        REV(80);
+        Wait(500);
+        STOP
+        FWD_B(90);
+        Wait(500);
+    }else if(error_t){
+        seg_m = 0;
+        STOP
+        REV(80);  Wait(400);
+        FWD_B(80);
+        Wait(200);
+    }else if(error_h){
+        seg_h = 0;
+        STOP
+        REV_B(70);
+        REV_A(50);
+        Wait(1500);
+        STOP
+        FWD_A(80);
+        Wait(600);
+        STOP
+        FWD(80);
+        Wait(500);
+    }
+    error_m = false;
+    error_h = false;
+    error_t = false;
+    stopManager = true;
+}
+
+sub configuracion(){
+    ClearScreen();
+    TextOut(30,LCD_LINE2,"En donde esta el circulo:");
+    TextOut(50,LCD_LINE5,"- Izqueirda");
+    TextOut(50,LCD_LINE6,"- En frente");
+    TextOut(50,LCD_LINE7,"- Derecha");
+    while(!ButtonPressed(BTNRIGHT,true) || !ButtonPressed(BTNRIGHT,true) || !ButtonPressed(BTNCENTER,true)){
+        if(ButtonPressed(BTNLEFT,true)){
+            ClearScreen();
+            TextOut(30,LCD_LINE2,"Circulo esta a mi IZQUIERDA");
+            TextOut(50,LCD_LINE4,"¿Continuar?");
+            until(ButtonPressed(BTNCENTER,true));
+            CCPosition = IZQ;
+        }
+        else if(ButtonPressed(BTNCENTER,true)){
+            ClearScreen();
+            TextOut(30,LCD_LINE2,"Circulo esta al FRENTE");
+            TextOut(50,LCD_LINE4,"¿Continuar?");
+            until(ButtonPressed(BTNCENTER,true));
+            CCPosition = FTE;
+        }
+        else if(ButtonPressed(BTNRIGHT,true)){
+            ClearScreen();
+            TextOut(30,LCD_LINE2,"Circulo esta a mi DERECHA");
+            TextOut(50,LCD_LINE4,"¿Continuar?");
+            until(ButtonPressed(BTNCENTER,true));
+            CCPosition = DER;
+        }
+    }
+}
+
+sub subeHumanoidePendiente(){
+     if(pendiente){
+         FWD(60);                       // Lo mete
+         Wait(500);
+         RotateMotor(OUT_C,80,1200);    // Lo sube
+         DELAY
+         RotateMotor(OUT_C,100,-350);   // Regresa
+         pendiente = false;
+     }
+}
+
+sub runTime(int t){
+    duracion = t;
+    runningTime = true;
+}
+
+sub conexion(int conn){
+   if (!BluetoothStatus(conn)==NO_ERR){
+        TextOut(5,LCD_LINE2,"   Error");
+        TextOut(5,LCD_LINE4,"de Bluetooth");
+        Wait(2000);
+        Stop(true);
+   }
+}
+
